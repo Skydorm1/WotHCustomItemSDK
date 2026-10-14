@@ -37,6 +37,21 @@ namespace WotHCustomItemSDK
             }
         }
 
+        internal static IList<AssetBundle> Bundles
+        {
+            get
+            {
+                List<AssetBundle> bundles = new List<AssetBundle>();
+                for (int i = 0; i < OrderedPackages.Count; i++)
+                {
+                    PackageInfo info = OrderedPackages[i];
+                    if (info != null && info.Bundle != null && !bundles.Contains(info.Bundle))
+                        bundles.Add(info.Bundle);
+                }
+                return bundles;
+            }
+        }
+
         internal static void Initialize()
         {
             OrderedPackages.Clear();
@@ -49,8 +64,7 @@ namespace WotHCustomItemSDK
                 return;
             }
 
-            IList<AssetBundleRegistry.BundleHandle> bundles =
-                AssetBundleRegistry.LoadDirectory(directory);
+            IList<AssetBundleRegistry.BundleHandle> bundles = LoadCandidateBundles(directory);
 
             for (int i = 0; i < bundles.Count; i++)
             {
@@ -58,7 +72,7 @@ namespace WotHCustomItemSDK
                 if (handle == null || handle.Bundle == null)
                     continue;
 
-                string packageName = ReadPackageName(handle.Bundle);
+                string packageName = ReadPackageName(handle.Bundle, handle.FullPath);
                 if (string.IsNullOrWhiteSpace(packageName))
                     continue;
 
@@ -155,7 +169,50 @@ namespace WotHCustomItemSDK
             return null;
         }
 
-        private static string ReadPackageName(AssetBundle bundle)
+        private static string ReadPackageName(AssetBundle bundle, string bundlePath)
+        {
+            string embeddedName = ReadPackageNameFromBundle(bundle);
+            if (!string.IsNullOrWhiteSpace(embeddedName))
+                return embeddedName;
+
+            if (string.IsNullOrWhiteSpace(bundlePath))
+                return null;
+
+            string directory = Path.GetDirectoryName(bundlePath);
+            if (string.IsNullOrWhiteSpace(directory))
+                return null;
+
+            string parentDirectory = Directory.GetParent(directory) == null
+                ? null
+                : Directory.GetParent(directory).FullName;
+            string[] metadataPaths =
+            {
+                Path.Combine(directory, "packagename.json"),
+                Path.Combine(directory, "Content", "packagename.json"),
+                parentDirectory == null ? string.Empty : Path.Combine(parentDirectory, "Content", "packagename.json")
+            };
+
+            for (int i = 0; i < metadataPaths.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(metadataPaths[i]) || !File.Exists(metadataPaths[i]))
+                    continue;
+
+                try
+                {
+                    string value = ParsePackageName(File.ReadAllText(metadataPaths[i]));
+                    if (!string.IsNullOrWhiteSpace(value))
+                        return value;
+                }
+                catch (Exception ex)
+                {
+                    Plugin.LogWarning("Could not read package metadata '" + metadataPaths[i] + "': " + ex.Message);
+                }
+            }
+
+            return null;
+        }
+
+        private static string ReadPackageNameFromBundle(AssetBundle bundle)
         {
             if (bundle == null)
                 return null;
@@ -193,6 +250,56 @@ namespace WotHCustomItemSDK
             catch { }
 
             return null;
+        }
+
+
+        private static IList<AssetBundleRegistry.BundleHandle> LoadCandidateBundles(string directory)
+        {
+            if (!SamePath(directory, BepInEx.Paths.PluginPath))
+                return AssetBundleRegistry.LoadDirectory(directory);
+
+            List<AssetBundleRegistry.BundleHandle> result = new List<AssetBundleRegistry.BundleHandle>();
+            if (!Directory.Exists(directory))
+                return result;
+
+            string sdkDirectory = Plugin.GetPluginDirectory();
+            string[] pluginDirectories = Directory.GetDirectories(directory);
+            Array.Sort(pluginDirectories, StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < pluginDirectories.Length; i++)
+            {
+                string pluginDirectory = pluginDirectories[i];
+                if (SamePath(pluginDirectory, sdkDirectory))
+                    continue;
+
+                IList<AssetBundleRegistry.BundleHandle> loaded =
+                    AssetBundleRegistry.LoadDirectory(pluginDirectory);
+
+                for (int j = 0; j < loaded.Count; j++)
+                {
+                    if (loaded[j] != null && loaded[j].Bundle != null)
+                        result.Add(loaded[j]);
+                }
+            }
+
+            return result;
+        }
+
+        private static bool SamePath(string left, string right)
+        {
+            if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+                return false;
+
+            try
+            {
+                string normalizedLeft = Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string normalizedRight = Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                return string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+            }
         }
 
         private static string ParsePackageName(string json)

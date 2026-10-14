@@ -128,6 +128,19 @@ namespace WotHCustomItemSDK
             Instance = null;
         }
 
+        internal static string GetPluginDirectory()
+        {
+            string assemblyPath = typeof(Plugin).Assembly.Location;
+            if (!string.IsNullOrWhiteSpace(assemblyPath))
+            {
+                string directory = Path.GetDirectoryName(assemblyPath);
+                if (!string.IsNullOrWhiteSpace(directory))
+                    return Path.GetFullPath(directory);
+            }
+
+            return Paths.PluginPath;
+        }
+
         internal static string ResolveBundlePath(string configuredPath)
         {
             if (string.IsNullOrWhiteSpace(configuredPath))
@@ -136,15 +149,34 @@ namespace WotHCustomItemSDK
             if (Path.IsPathRooted(configuredPath))
                 return Path.GetFullPath(configuredPath);
 
-            string sdkPath = Path.Combine(Paths.PluginPath, PluginName, configuredPath);
-            if (File.Exists(sdkPath))
-                return sdkPath;
+            string pluginDirectory = GetPluginDirectory();
+            string bundleName = Path.GetFileName(configuredPath);
+            string[] candidates =
+            {
+                Path.Combine(pluginDirectory, configuredPath),
+                Path.Combine(pluginDirectory, "UnLimitBagBepInExMod", bundleName),
+                Path.Combine(Paths.PluginPath, "UnLimitBagBepInExMod", bundleName),
+                Path.Combine(Paths.PluginPath, bundleName)
+            };
 
-            string legacyPath = Path.Combine(Paths.PluginPath, "UnLimitBagBepInExMod", configuredPath);
-            if (File.Exists(legacyPath))
-                return legacyPath;
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                if (File.Exists(candidates[i]))
+                    return Path.GetFullPath(candidates[i]);
+            }
 
-            return sdkPath;
+            if (Directory.Exists(pluginDirectory))
+            {
+                string[] matches = Directory.GetFiles(
+                    pluginDirectory,
+                    bundleName,
+                    SearchOption.AllDirectories);
+                Array.Sort(matches, StringComparer.OrdinalIgnoreCase);
+                if (matches.Length > 0)
+                    return Path.GetFullPath(matches[0]);
+            }
+
+            return Path.Combine(pluginDirectory, configuredPath);
         }
 
         internal static string ResolveModPackDirectory()
@@ -156,7 +188,8 @@ namespace WotHCustomItemSDK
             if (Path.IsPathRooted(configured))
                 return Path.GetFullPath(configured);
 
-            return Path.Combine(Paths.PluginPath, configured);
+            string configuredPath = Path.Combine(Paths.PluginPath, configured);
+            return Directory.Exists(configuredPath) ? configuredPath : Paths.PluginPath;
         }
 
         internal static void Log(string message)

@@ -161,25 +161,19 @@ namespace WotHCustomItemSDK
     private void LoadCustomBundles()
     {
         loadedBundles.Clear();
-        string bundleDirectory = Plugin.ResolveModPackDirectory();
 
-        IList<AssetBundleRegistry.BundleHandle> bundles =
-            AssetBundleRegistry.GetLoadedBundlesInDirectory(bundleDirectory);
-
+        IList<AssetBundle> bundles = PackageRegistry.Bundles;
         for (int i = 0; i < bundles.Count; i++)
         {
-            AssetBundleRegistry.BundleHandle handle = bundles[i];
-            if (handle == null || handle.Bundle == null)
-                continue;
-
-            if (!loadedBundles.Contains(handle.Bundle))
-                loadedBundles.Add(handle.Bundle);
+            AssetBundle bundle = bundles[i];
+            if (bundle != null && !loadedBundles.Contains(bundle))
+                loadedBundles.Add(bundle);
         }
 
         if (loadedBundles.Count == 0)
-            Plugin.LogWarning("No custom AssetBundles are registered for the modpack directory.");
+            Plugin.LogWarning("No custom AssetBundles with registered package metadata were found.");
         else
-            Plugin.Log("Using " + loadedBundles.Count + " shared custom AssetBundle(s).");
+            Plugin.Log("Using " + loadedBundles.Count + " registered custom package AssetBundle(s).");
     }
     private void IndexAllBundleAssets()
     {
